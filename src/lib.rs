@@ -78,8 +78,29 @@ macro_rules! beard {
 macro_rules! beard_internal {
     ($output:ident, ) => {
     };
+
+    ($output:ident, | | $statement:block $($any:tt)*) => {
+        {
+            $statement
+        }
+        $crate::beard_internal!($output, $($any)*);
+    };
+    ($output:ident, || $statement:block $($any:tt)*) => {
+        {
+            $statement
+        }
+        $crate::beard_internal!($output, $($any)*);
+    };
+
+
     ($output:ident, $text:literal $($any:tt)*) => {
         $output.write_all($text.as_bytes())?;
+        $crate::beard_internal!($output, $($any)*);
+    };
+    ($output:ident, [ $statement:block ] $($any:tt)*) => {
+        $output.write_all(
+             $statement.as_ref()
+        )?;
         $crate::beard_internal!($output, $($any)*);
     };
     ($output:ident, $statement:block $($any:tt)*) => {
@@ -97,6 +118,12 @@ macro_rules! beard_internal {
         }
         $crate::beard_internal!($output, $($any)*);
     };
+    ($output:ident, if let $condition:pat = ( $value:expr ) { $($statement:tt)+ } $($any:tt)*) => {
+        if let $condition = $value {
+            $crate::beard_internal!($output, $($statement)+);
+        }
+        $crate::beard_internal!($output, $($any)*);
+    };
     ($output:ident, if ( $condition:expr ) { $($statement:tt)+ } $($any:tt)*) => {
         if $condition {
             $crate::beard_internal!($output, $($statement)+);
@@ -106,6 +133,7 @@ macro_rules! beard_internal {
 
     ($output:ident, for $value:pat in ($into_iter:expr) { $($statement:tt)+ } $($any:tt)*) => {
         for $value in $into_iter.into_iter() {
+            #![allow(clippy::into_iter_on_ref, array_into_iter)]
             $crate::beard_internal!($output, $($statement)+);
         }
         $crate::beard_internal!($output, $($any)*);
@@ -126,6 +154,7 @@ print thing: two
     fn render() -> Result<String, std::io::Error> {
         let value = "value";
         let stuff = ["one", "two"];
+        let optionals = [Some(1), None];
 
         let mut output = Vec::new();
         beard! {
@@ -136,15 +165,30 @@ print thing: two
                 "This test is not rendered" { value }
             }
 
+            " as bytes directly: " [ { value.as_bytes() } ] "\n"
+
             if (!stuff.is_empty()) {
                 "The length of the stuff is not null " { value } "\n"
             } else {
                 "oops\n"
             }
 
+
+            for optional in ( optionals ) {
+                if let Some(value) = ( optional ) {
+                    "Optional value set " { value } "\n"
+                }
+                if let None = (optional) {
+                    "Optional value not set\n"
+                }
+            }
+
             for (_index, thing) in (stuff.iter().enumerate()) {
+
                 "print thing: " { thing } "\n"
             }
+
+            | | { output.write_all(b"something custom")?; }
         };
         Ok(String::from_utf8(output).unwrap())
     }
