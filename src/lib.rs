@@ -13,6 +13,157 @@ by writing the code yourself (calling [std::io::Write] appropriate
 methods). [`beard`] is simply an help to do that and to make it
 easier to maintain the templates.
 
+# How it works
+
+## string literals
+
+Any string literal will be written as is in the output.
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    beard! {
+        output,
+        "List of items:\n"
+        "\n"
+        "* item 1\n"
+        "* item 2\n"
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
+## serialising any impl of Display
+
+You can intersperse serialised object that implements [`std::fmt::Display`],
+just use the curly bracket as you would if you were to use in
+[`std::format`] macro, except outside of the string.
+
+Interestingly it can also do any kind of operations within the brackets
+so long it returns something that implements [`std::fmt::Display`].
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    let value = 42;
+    beard! {
+        output,
+        { value } "\n"
+        { 1 + 2 } "\n"
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
+## serialising array of bytes
+
+In case the value is already an array and there is no need to run
+[`std::fmt::Display`]'s formatting to [`String`] as intermediate.
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    let value = b"some array";
+    beard! {
+        output,
+        [{ value }] "\n"
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
+## Calling function to serialize
+
+Would you need to perform some operation with the [`std::io::Write`]
+object you can capture the variable by calling a _lambda_ (it's not
+really one).
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    let value = b"some array";
+    beard! {
+        output,
+        || {
+            // do other operations
+            output.write_all(b"some bytes")?;
+        }
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
+## `if` and `if let` statement
+
+There are times where one needs to serialize or not some parts.
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    let value = false;
+    let optional = Some("something");
+    beard! {
+        output,
+        if (value) {
+            "Value is true\n"
+        } else {
+            "Value is false\n"
+        }
+
+        "Or do some pattern matching\n"
+        if let Some(value) = (optional) {
+            "We have " { value } "\n"
+        }
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
+## `for` loop, iterating on items
+
+Shall you need to print the items of a list or anything that
+implements [`std::iter::IntoIterator`].
+
+```
+use beard::beard;
+# use std::io::Write as _;
+#
+# fn render() -> Result<String, std::io::Error> {
+#    let mut output = Vec::new();
+    let shopping_list = ["apple", "pasta", "tomatoes", "garlic", "mozzarella"];
+    beard! {
+        output,
+        "Shopping list\n"
+        "\n"
+        for (index, item) in (shopping_list.iter().enumerate()) {
+            {index} ". " { item } "\n"
+        }
+    };
+#    Ok(String::from_utf8(output).unwrap())
+# }
+# let output = render().unwrap();
+```
+
 # Example
 
 ```
@@ -146,10 +297,13 @@ fn test() {
 
     const EXPECTED: &str = r##"Variables can be formatted as follow: value.
 Statement works too: 3 (so you can do special formatting if you want).
+ as bytes directly: value
 The length of the stuff is not null value
+Optional value set 1
+Optional value not set
 print thing: one
 print thing: two
-"##;
+something custom"##;
 
     fn render() -> Result<String, std::io::Error> {
         let value = "value";
@@ -194,6 +348,8 @@ print thing: two
     }
 
     let message = render().unwrap();
+
+    println!("{}", message);
 
     assert_eq!(EXPECTED, message);
 }
